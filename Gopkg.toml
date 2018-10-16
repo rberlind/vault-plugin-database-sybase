@@ -1,0 +1,11 @@
+[[constraint]]
+  name = "github.com/hashicorp/vault"
+  branch = "master"
+
+[[constraint]]
+  name = "github.com/minus5/gofreetds"
+  branch = "master"
+
+[prune]
+  go-tests = true
+  unused-packages = true

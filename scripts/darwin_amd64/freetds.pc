@@ -1,0 +1,12 @@
+prefix=/usr/local/opt/freetds
+
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: freetds
+Description: FreeTDS Library
+Version: ${version}
+Libs: -L${libdir} -lclntsh
+Libs.private:
+Cflags: -I${includedir}
+Version=1.00.104
