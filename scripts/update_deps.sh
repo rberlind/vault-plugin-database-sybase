@@ -13,10 +13,10 @@ export PATH="${GOPATH}/bin:${PATH}"
 cd $tempdir
 
 ## Get tool
-mkdir -p src/github.com/hashicorp
-cd src/github.com/hashicorp
+mkdir -p src/github.com/rberlind
+cd src/github.com/rberlind
 echo "Fetching ${TOOL}..."
-git clone https://github.com/hashicorp/${TOOL}.git
+git clone https://github.com/rberlind/${TOOL}.git
 cd ${TOOL}
 
 ## Get golang dep tool
@@ -34,4 +34,4 @@ dep ensure
 echo "Pruning unused deps..."
 dep prune
 
-echo "Done; to commit run \n\ncd ${GOPATH}/src/github.com/hashicorp/${TOOL}\n"
+echo "Done; to commit run \n\ncd ${GOPATH}/src/github.com/rberlind/${TOOL}\n"

@@ -29,7 +29,7 @@ RUN set -eux; \
 ENV GOPATH /go
 ENV PATH $GOPATH/bin:/usr/local/go/bin:$PATH
 
-RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" "$GOPATH/src/github.com/hashicorp/vault-plugin-database-sybase" && chmod -R 777 "$GOPATH"
-WORKDIR $GOPATH/src/github.com/hashicorp/vault-plugin-database-sybase
+RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" "$GOPATH/src/github.com/rberlind/vault-plugin-database-sybase" && chmod -R 777 "$GOPATH"
+WORKDIR $GOPATH/src/github.com/rberlind/vault-plugin-database-sybase
 
 CMD make bootstrap bin
