@@ -1,5 +1,5 @@
 [[constraint]]
-  name = "github.com/hashicorp/vault"
+  name = "github.com/rberlind/vault"
   branch = "master"
 
 [[constraint]]

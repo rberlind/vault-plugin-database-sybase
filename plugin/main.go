@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	plugin "github.com/hashicorp/vault-plugin-database-sybase"
+	plugin "github.com/rberlind/vault-plugin-database-sybase"
 	"github.com/hashicorp/vault/helper/pluginutil"
 )
 
