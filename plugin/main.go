@@ -4,8 +4,8 @@ import (
 	"log"
 	"os"
 
-	plugin "github.com/rberlind/vault-plugin-database-sybase"
 	"github.com/hashicorp/vault/helper/pluginutil"
+	plugin "github.com/rberlind/vault-plugin-database-sybase"
 )
 
 func main() {

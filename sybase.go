@@ -14,19 +14,18 @@ import (
 	"github.com/hashicorp/vault/helper/dbtxn"
 	"github.com/hashicorp/vault/helper/strutil"
 	"github.com/hashicorp/vault/plugins"
-	"github.com/hashicorp/vault/plugins/helper/database/connutil"
 	"github.com/hashicorp/vault/plugins/helper/database/credsutil"
 	"github.com/hashicorp/vault/plugins/helper/database/dbutil"
-	_ "github.com/minus5/gofreetds"
+	_ "github.com/rberlind/gofreetds"
 )
 
-const sybaseTypeName = "sybase"
+const sybaseTypeName = "mssql"
 
 var _ dbplugin.Database = &SYBASE{}
 
 // SYBASE is an implementation of Database interface
 type SYBASE struct {
-	*connutil.SQLConnectionProducer
+	*SQLConnectionProducer
 	credsutil.CredentialsProducer
 }
 
@@ -39,14 +38,14 @@ func New() (interface{}, error) {
 }
 
 func new() *SYBASE {
-	connProducer := &connutil.SQLConnectionProducer{}
+	connProducer := &SQLConnectionProducer{}
 	connProducer.Type = sybaseTypeName
 
 	credsProducer := &credsutil.SQLCredentialsProducer{
 		DisplayNameLen: 20,
 		RoleNameLen:    20,
 		UsernameLen:    30,
-		Separator:      "-",
+		Separator:      "_",
 	}
 
 	return &SYBASE{
@@ -109,6 +108,7 @@ func (m *SYBASE) CreateUser(ctx context.Context, statements dbplugin.Statements,
 	if err != nil {
 		return "", "", err
 	}
+	password = strings.Replace(password, "-", "_", -1)
 
 	expirationStr, err := m.GenerateExpiration(expiration)
 	if err != nil {
@@ -116,11 +116,11 @@ func (m *SYBASE) CreateUser(ctx context.Context, statements dbplugin.Statements,
 	}
 
 	// Start a transaction
-	tx, err := db.BeginTx(ctx, nil)
+	/*tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", "", err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback()*/
 
 	// Execute each query
 	for _, stmt := range statements.Creation {
@@ -136,16 +136,17 @@ func (m *SYBASE) CreateUser(ctx context.Context, statements dbplugin.Statements,
 				"expiration": expirationStr,
 			}
 
-			if err := dbtxn.ExecuteTxQuery(ctx, tx, m, query); err != nil {
+      if err := dbtxn.ExecuteDBQuery(ctx, db, m, query); err != nil {
+			//if err := dbtxn.ExecuteTxQuery(ctx, tx, m, query); err != nil {
 				return "", "", err
 			}
 		}
 	}
 
 	// Commit the transaction
-	if err := tx.Commit(); err != nil {
+	/*if err := tx.Commit(); err != nil {
 		return "", "", err
-	}
+	}*/
 
 	return username, password, nil
 }
@@ -216,40 +217,39 @@ func (m *SYBASE) revokeUserDefault(ctx context.Context, username string) error {
 		return err
 	}
 
-	// First disable server login
-	disableStmt, err := db.PrepareContext(ctx, fmt.Sprintf("sp_locklogin %s , \"lock\"", username))
+	// First, disable server login
+	lockLoginStmt, err := db.PrepareContext(ctx, fmt.Sprintf("master.dbo.sp_locklogin %s , \"lock\"", username))
 	if err != nil {
-		return err
+		return errwrap.Wrapf("Could not prepare context for locking login: {{err}}", err)
 	}
-	defer disableStmt.Close()
-	if _, err := disableStmt.ExecContext(ctx); err != nil {
-		return err
+	defer lockLoginStmt.Close()
+	if _, err := lockLoginStmt.ExecContext(ctx); err != nil {
+		return errwrap.Wrapf("Could not execute context for locking login: {{err}}", err)
 	}
 
 	// Find the default database for the login
 	// There should only be one
-	defaultDatabaseStmt, err := db.PrepareContext(ctx, fmt.Sprintf(
-		"SELECT dbname FROM syslogins WHERE name = '%s'", username))
+	var defaultDatabase string
+	defaultDatabaseStmt, err := db.PrepareContext(ctx, fmt.Sprintf("SELECT dbname FROM master.dbo.syslogins WHERE name = '%s'", username))
 	if err != nil {
-		return err
+		return errwrap.Wrapf("Could not prepare context for selecting dbname from syslogins: {{err}}", err)
 	}
 	defer defaultDatabaseStmt.Close()
 
-	rows, err := defaultDatabaseStmt.QueryContext(ctx)
-	if err != nil {
-		return err
+	err = defaultDatabaseStmt.QueryRowContext(ctx).Scan(&defaultDatabase)
+	switch {
+	  case err == sql.ErrNoRows:
+		  fmt.Print("No rows for defaultDatabase")
+			return errwrap.Wrapf("No rows for defaultDatabase: {{err}}", err)
+			//defaultDatabase = "vault"
+	  case err != nil:
+		  return errwrap.Wrapf("Could not query context for selecting dbname from syslogins: {{err}}", err)
+		default:
+			fmt.Printf("Found defaultDatabase: '%s'", defaultDatabase)
 	}
-	defer rows.Close()
 
 	var revokeStmts []string
-	for rows.Next() {
-		var defaultDatabase string
-		err = rows.Scan(&defaultDatabase)
-		if err != nil {
-			return err
-		}
-		revokeStmts = append(revokeStmts, fmt.Sprintf(dropUserSQL, defaultDatabase, username, username))
-	}
+	revokeStmts = append(revokeStmts, fmt.Sprintf(dropUserSQL, defaultDatabase, username, username))
 
 	// we do not stop on error, as we want to remove as
 	// many permissions as possible right now
@@ -260,18 +260,14 @@ func (m *SYBASE) revokeUserDefault(ctx context.Context, username string) error {
 		}
 	}
 
-	// can't drop if not all database users are dropped
-	if rows.Err() != nil {
-		return errwrap.Wrapf("could not generate sql statements for all rows: {{err}}", rows.Err())
-	}
 	if lastStmtError != nil {
-		return errwrap.Wrapf("could not perform all sql statements: {{err}}", lastStmtError)
+		return errwrap.Wrapf("could not drop user from default database: {{err}}", lastStmtError)
 	}
 
 	// Drop this login
 	stmt, err := db.PrepareContext(ctx, fmt.Sprintf(dropLoginSQL, username, username))
 	if err != nil {
-		return err
+		return errwrap.Wrapf("Could not drop login: {{err}}", err)
 	}
 	defer stmt.Close()
 	if _, err := stmt.ExecContext(ctx); err != nil {
@@ -358,7 +354,7 @@ const dropLoginSQL = `
 USE master
 IF EXISTS
   (SELECT name
-   FROM syslogins
+   FROM master.dbo.syslogins
    WHERE name = '%s')
 BEGIN
   DROP LOGIN %s

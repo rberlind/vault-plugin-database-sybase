@@ -5,11 +5,11 @@ THIS_FILE := $(lastword $(MAKEFILE_LIST))
 TEST?=$$(go list ./... | grep -v /vendor/ | grep -v /integ)
 GOFMT_FILES?=$$(find . -name '*.go' | grep -v vendor)
 EXTERNAL_TOOLS=\
-	github.com/mitchellh/gox 
+	github.com/mitchellh/gox
 
 default: dev
 
-# bin generates the releaseable binaries for vault-plugin-database-oracl0e
+# bin generates the releaseable binaries for vault-plugin-database-sybase
 bin: fmtcheck generate
 	@CGO_ENABLED=1 BUILD_TAGS='$(BUILD_TAGS)' XC_ARCH="amd64" XC_OS="linux" XC_OSARCH="linux/amd64" sh -c "'$(CURDIR)/scripts/build.sh'"
 
