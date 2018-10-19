@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"log"
 
 	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/vault/api"
@@ -239,39 +240,43 @@ func (m *SYBASE) revokeUserDefault(ctx context.Context, username string) error {
 	err = defaultDatabaseStmt.QueryRowContext(ctx).Scan(&defaultDatabase)
 	switch {
 	  case err == sql.ErrNoRows:
-		  fmt.Print("No rows for defaultDatabase")
+		  log.Println("No rows for defaultDatabase")
 			return errwrap.Wrapf("No rows for defaultDatabase: {{err}}", err)
 			//defaultDatabase = "vault"
 	  case err != nil:
+			log.Println("Some other error retrieving defaultDatabase")
 		  return errwrap.Wrapf("Could not query context for selecting dbname from syslogins: {{err}}", err)
 		default:
-			fmt.Printf("Found defaultDatabase: '%s'", defaultDatabase)
+			log.Printf("Found defaultDatabase: '%s'", defaultDatabase)
 	}
 
-	var revokeStmts []string
-	revokeStmts = append(revokeStmts, fmt.Sprintf(dropUserSQL, defaultDatabase, username, username))
-
-	// we do not stop on error, as we want to remove as
-	// many permissions as possible right now
-	var lastStmtError error
-	for _, query := range revokeStmts {
-		if err := dbtxn.ExecuteDBQuery(ctx, db, nil, query); err != nil {
-			lastStmtError = err
-		}
+  dropUser := fmt.Sprintf(dropUserSQL, defaultDatabase, username, username)
+	dropUserStmt, err := db.PrepareContext(ctx, dropUser)
+	log.Printf("Invoking statement, '%s' to drop user from database '%s'", strings.Replace(dropUser, "\n", " ", -1), defaultDatabase)
+	if err != nil {
+		return errwrap.Wrapf("Could not prepare context for dropping user: {{err}}", err)
 	}
 
-	if lastStmtError != nil {
-		return errwrap.Wrapf("could not drop user from default database: {{err}}", lastStmtError)
+	defer dropUserStmt.Close()
+	if _, err = dropUserStmt.ExecContext(ctx); err != nil {
+		return errwrap.Wrapf("could not drop user from database: {{err}}", err)
+	} else {
+		log.Printf("Dropped user '%s' from database '%s'", username, defaultDatabase)
 	}
 
 	// Drop this login
-	stmt, err := db.PrepareContext(ctx, fmt.Sprintf(dropLoginSQL, username, username))
+	dropLogin := fmt.Sprintf(dropLoginSQL, username, username)
+	dropLoginStmt, err := db.PrepareContext(ctx, dropLogin)
+	log.Printf("Invoking statement, '%s' to drop login '%s'", strings.Replace(dropLogin, "\n", " ", -1), username)
 	if err != nil {
-		return errwrap.Wrapf("Could not drop login: {{err}}", err)
+		return errwrap.Wrapf("Could not prepare context for dropping login: {{err}}", err)
 	}
-	defer stmt.Close()
-	if _, err := stmt.ExecContext(ctx); err != nil {
-		return err
+
+	defer dropLoginStmt.Close()
+	if _, err = dropLoginStmt.ExecContext(ctx); err != nil {
+		return errwrap.Wrapf("could not drop login from database: {{err}}", err)
+	} else {
+		log.Printf("Dropped login '%s'", username)
 	}
 
 	return nil
@@ -340,10 +345,9 @@ func (m *SYBASE) RotateRootCredentials(ctx context.Context, statements []string)
 }
 
 const dropUserSQL = `
-USE %s
 IF EXISTS
   (SELECT name
-   FROM sysusers
+   FROM %s.dbo.sysusers
    WHERE name = '%s')
 BEGIN
   execute sp_dropuser %s
