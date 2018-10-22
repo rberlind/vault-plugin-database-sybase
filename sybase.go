@@ -61,7 +61,6 @@ func Run(apiTLSConfig *api.TLSConfig) error {
 	if err != nil {
 		return err
 	}
-
 	plugins.Serve(dbType.(dbplugin.Database), apiTLSConfig)
 
 	return nil
@@ -84,6 +83,7 @@ func (m *SYBASE) getConnection(ctx context.Context) (*sql.DB, error) {
 // CreateUser generates the username/password on the underlying SYBASE secret backend as instructed by
 // the CreationStatement provided.
 func (m *SYBASE) CreateUser(ctx context.Context, statements dbplugin.Statements, usernameConfig dbplugin.UsernameConfig, expiration time.Time) (username string, password string, err error) {
+  log.Println("Calling CreateUser()")
 	// Grab the lock
 	m.Lock()
 	defer m.Unlock()
@@ -116,13 +116,6 @@ func (m *SYBASE) CreateUser(ctx context.Context, statements dbplugin.Statements,
 		return "", "", err
 	}
 
-	// Start a transaction
-	/*tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return "", "", err
-	}
-	defer tx.Rollback()*/
-
 	// Execute each query
 	for _, stmt := range statements.Creation {
 		for _, query := range strutil.ParseArbitraryStringSlice(stmt, ";") {
@@ -138,16 +131,10 @@ func (m *SYBASE) CreateUser(ctx context.Context, statements dbplugin.Statements,
 			}
 
       if err := dbtxn.ExecuteDBQuery(ctx, db, m, query); err != nil {
-			//if err := dbtxn.ExecuteTxQuery(ctx, tx, m, query); err != nil {
 				return "", "", err
 			}
 		}
 	}
-
-	// Commit the transaction
-	/*if err := tx.Commit(); err != nil {
-		return "", "", err
-	}*/
 
 	return username, password, nil
 }
@@ -250,7 +237,7 @@ func (m *SYBASE) revokeUserDefault(ctx context.Context, username string) error {
 			log.Printf("Found defaultDatabase: '%s'", defaultDatabase)
 	}
 
-  dropUser := fmt.Sprintf(dropUserSQL, defaultDatabase, username, username)
+  dropUser := fmt.Sprintf(dropUserSQL, defaultDatabase, username, defaultDatabase, username)
 	dropUserStmt, err := db.PrepareContext(ctx, dropUser)
 	log.Printf("Invoking statement, '%s' to drop user from database '%s'", strings.Replace(dropUser, "\n", " ", -1), defaultDatabase)
 	if err != nil {
@@ -290,9 +277,9 @@ func (m *SYBASE) RotateRootCredentials(ctx context.Context, statements []string)
 		return nil, errors.New("username and password are required to rotate")
 	}
 
-	rotateStatents := statements
-	if len(rotateStatents) == 0 {
-		rotateStatents = []string{rotateRootCredentialsSQL}
+	rotateStatements := statements
+	if len(rotateStatements) == 0 {
+		rotateStatements = []string{rotateRootCredentialsSQL}
 	}
 
 	db, err := m.getConnection(ctx)
@@ -300,21 +287,15 @@ func (m *SYBASE) RotateRootCredentials(ctx context.Context, statements []string)
 		return nil, err
 	}
 
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		tx.Rollback()
-	}()
-
 	old_password := m.Password
+	log.Println("Generating new password")
 	password, err := m.GeneratePassword()
 	if err != nil {
 		return nil, err
 	}
+	password = strings.Replace(password, "-", "_", -1)
 
-	for _, stmt := range rotateStatents {
+	for _, stmt := range rotateStatements {
 		for _, query := range strutil.ParseArbitraryStringSlice(stmt, ";") {
 			query = strings.TrimSpace(query)
 			if len(query) == 0 {
@@ -326,14 +307,11 @@ func (m *SYBASE) RotateRootCredentials(ctx context.Context, statements []string)
 				"old_password": old_password,
 				"password":     password,
 			}
-			if err := dbtxn.ExecuteTxQuery(ctx, tx, m, query); err != nil {
+			log.Printf("Executing query '%s'", query)
+			if err := dbtxn.ExecuteDBQuery(ctx, db, m, query); err != nil {
 				return nil, err
 			}
 		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, err
 	}
 
 	if err := db.Close(); err != nil {
@@ -350,12 +328,11 @@ IF EXISTS
    FROM %s.dbo.sysusers
    WHERE name = '%s')
 BEGIN
-  execute sp_dropuser %s
+  execute %s.dbo.sp_dropuser %s
 END
 `
 
 const dropLoginSQL = `
-USE master
 IF EXISTS
   (SELECT name
    FROM master.dbo.syslogins
