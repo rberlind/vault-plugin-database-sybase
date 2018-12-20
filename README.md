@@ -6,10 +6,6 @@ This project uses the database plugin interface introduced in Vault version 0.7.
 
 ## Build
 
-For linux/amd64, pre-built binaries can be found at [the releases page](https://releases.hashicorp.com/vault-plugin-database-sybase/)
-
-For other platforms, there are not currently pre-built binaries available.
-
 Before building, you will need to download the FreeTDS library, which is available from [FreeTDS](http://www.freetds.org/software.html). The libraries and headers should be installed at one of the standard locations for your platform (e.g. on macOS, `/usr/local/opt/freetds/include`&`/usr/local/opt/freetds/lib` or `~/include`&`~/lib`).
 
 Next, create a [`pkg-config`](https://www.freedesktop.org/wiki/Software/pkg-config/) file to point to the library. Create the file `freetds.pc` on your `PKG_CONFIG_PATH`.
