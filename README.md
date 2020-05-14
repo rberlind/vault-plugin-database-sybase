@@ -1,8 +1,7 @@
 # vault-database-plugin-Sybase
+This repository contains an unofficial, unsupported [Vault](https://www.vaultproject.io) plugin for Sybase that can be used with Vault's [Database Secrets Engine](https://www.vaultproject.io/docs/secrets/databases).
 
-A [Vault](https://www.vaultproject.io) plugin for Sybase
-
-This project uses the database plugin interface introduced in Vault version 0.7.1.
+It was tested with Sybase Adaptive Server Enterprise 16.0 SP03.
 
 ## Build
 
